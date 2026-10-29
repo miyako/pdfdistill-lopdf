@@ -1,0 +1,117 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  BIN: pdfdistill-lopdf
+
+jobs:
+  licenses:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check licenses
+
+  macos:
+    runs-on: macos-14
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - name: Test
+        run: cargo test --release --locked
+      - name: Build both architectures
+        run: |
+          cargo build --release --locked --target aarch64-apple-darwin
+          cargo build --release --locked --target x86_64-apple-darwin
+      - name: Universal binary (lipo)
+        run: |
+          mkdir -p dist
+          lipo -create -output dist/$BIN \
+            target/aarch64-apple-darwin/release/$BIN \
+            target/x86_64-apple-darwin/release/$BIN
+          lipo -info dist/$BIN
+          otool -L dist/$BIN
+          dist/$BIN --version
+          dist/$BIN tests/fixtures/ms-print-to-pdf-1.pdf -o /tmp/out.pdf -v
+          cp LICENSE README.md dist/
+          cd dist && zip -9 ../$BIN-macos-universal.zip *
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BIN }}-macos-universal
+          path: ${{ env.BIN }}-macos-universal.zip
+
+  windows:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        target: [x86_64-pc-windows-msvc, aarch64-pc-windows-msvc]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: Test
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        run: cargo test --release --locked --target ${{ matrix.target }}
+      - name: Build (static CRT via .cargo/config.toml)
+        run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: Package
+        shell: pwsh
+        run: |
+          $arch = if ('${{ matrix.target }}' -like 'x86_64*') { 'x64' } else { 'arm64' }
+          New-Item -ItemType Directory dist | Out-Null
+          Copy-Item target/${{ matrix.target }}/release/$env:BIN.exe dist/
+          Copy-Item LICENSE, README.md dist/
+          if ($arch -eq 'x64') {
+            & "dist/$env:BIN.exe" --version
+            & "dist/$env:BIN.exe" tests/fixtures/ms-print-to-pdf-1.pdf -o out.pdf -v
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+          }
+          Compress-Archive -Path dist/* -DestinationPath "$env:BIN-windows-$arch.zip"
+          "ASSET=$env:BIN-windows-$arch" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Check for dynamic CRT imports
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        shell: pwsh
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          $dumpbin = Get-ChildItem -Recurse "$vs\VC\Tools\MSVC" -Filter dumpbin.exe | Where-Object { $_.FullName -like '*Hostx64\x64*' } | Select-Object -First 1
+          $deps = & $dumpbin.FullName /DEPENDENTS "dist/$env:BIN.exe" | Out-String
+          Write-Output $deps
+          if ($deps -match 'VCRUNTIME|MSVCP|api-ms-win-crt') { Write-Error 'dynamic CRT dependency found'; exit 1 }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ASSET }}
+          path: ${{ env.ASSET }}.zip
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [licenses, macos, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*.zip
+          generate_release_notes: true
