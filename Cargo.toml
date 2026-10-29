@@ -1,0 +1,32 @@
+[package]
+name = "pdfdistill-lopdf"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+license = "MIT"
+description = "Shrink bloated PDFs (e.g. from Microsoft Print to PDF): dedup, font subsetting, image recompression, structural compaction. Built on lopdf."
+repository = "https://github.com/miyako/pdfdistill-lopdf"
+readme = "README.md"
+
+[lib]
+name = "pdfdistill"
+path = "src/lib.rs"
+
+[[bin]]
+name = "pdfdistill-lopdf"
+path = "src/main.rs"
+
+[dependencies]
+lopdf = { version = "0.46", default-features = false }
+flate2 = { version = "1.1", default-features = false, features = ["zlib-rs"] }
+subsetter = { version = "0.2.6", default-features = false }
+jpeg-encoder = { version = "0.7", default-features = false, features = ["std"] }
+zune-jpeg = "0.4"
+sha2 = "0.10"
+zune-core = "0.4"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = true
