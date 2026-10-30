@@ -1,26 +1,13 @@
 {
 	"_method_": {},
-	"cs.curl": {
-		"_curl_Controller": {
+	"cs.lopdf": {
+		"_distill_Controller": {
 			"new()": {
-				"Syntax": "**.new**( *CLI* : cs.curl._CLI )",
+				"Syntax": "**.new**( *CLI* : cs.lopdf._CLI )",
 				"Params": [
 					[
 						"CLI",
-						"cs.curl._CLI",
-						"->"
-					]
-				],
-				"Summary": ""
-			}
-		},
-		"curl": {
-			"new()": {
-				"Syntax": "**.new**( *class* : 4D.Class )",
-				"Params": [
-					[
-						"class",
-						"4D.Class",
+						"cs.lopdf._CLI",
 						"->"
 					]
 				],
@@ -47,11 +34,24 @@
 		},
 		"_CLI_Controller": {
 			"new()": {
-				"Syntax": "**.new**( *CLI* : cs.curl._CLI )",
+				"Syntax": "**.new**( *CLI* : cs.lopdf._CLI )",
 				"Params": [
 					[
 						"CLI",
-						"cs.curl._CLI",
+						"cs.lopdf._CLI",
+						"->"
+					]
+				],
+				"Summary": ""
+			}
+		},
+		"distill": {
+			"new()": {
+				"Syntax": "**.new**( *class* : 4D.Class )",
+				"Params": [
+					[
+						"class",
+						"4D.Class",
 						"->"
 					]
 				],
@@ -59,7 +59,7 @@
 			}
 		}
 	},
-	"_curl_Controller": {
+	"_distill_Controller": {
 		"onTerminate()": {
 			"Syntax": "**.onTerminate**( *worker* : 4D.SystemWorker; *params* : Object )",
 			"Params": [
@@ -141,11 +141,11 @@
 			"Summary": ""
 		},
 		"clear()": {
-			"Syntax": "**.clear**() : cs.curl._curl_Controller",
+			"Syntax": "**.clear**() : cs.lopdf._distill_Controller",
 			"Params": [
 				[
 					"",
-					"cs.curl._curl_Controller",
+					"cs.lopdf._distill_Controller",
 					"<-"
 				]
 			],
@@ -159,87 +159,13 @@
 		},
 		"_inheritedFrom_": "_CLI_Controller"
 	},
-	"curl": {
-		"version()": {
-			"Syntax": "**.version**() : Object",
-			"Params": [
-				[
-					"",
-					"Object",
-					"<-"
-				]
-			],
-			"Summary": ""
-		},
-		"get controller()": {
-			"Syntax": "**.get controller**() : cs.curl._curl_Controller",
-			"Params": [
-				[
-					"",
-					"cs.curl._curl_Controller",
-					"<-"
-				]
-			],
-			"Summary": ""
-		},
-		"terminate()": {
-			"Syntax": "**.terminate**()",
-			"Params": [],
-			"Summary": ""
-		},
-		"execute()": {
-			"Syntax": "**.execute**( *option* : Variant; *events* : Object ) : Collection",
-			"Params": [
-				[
-					"option",
-					"Variant",
-					"->"
-				],
-				[
-					"events",
-					"Object",
-					"->"
-				],
-				[
-					"",
-					"Collection",
-					"<-"
-				]
-			],
-			"Summary": ""
-		},
-		"get worker()": {
-			"Syntax": "**.get worker**() : 4D.SystemWorker",
-			"Params": [
-				[
-					"",
-					"4D.SystemWorker",
-					"<-"
-				]
-			],
-			"Summary": ""
-		},
-		"onError": {
-			"Syntax": "onError : 4D.Function"
-		},
-		"onTerminate": {
-			"Syntax": "onTerminate : 4D.Function"
-		},
-		"onResponse": {
-			"Syntax": "onResponse : 4D.Function"
-		},
-		"onData": {
-			"Syntax": "onData : 4D.Function"
-		},
-		"_inheritedFrom_": "_CLI"
-	},
 	"_CLI": {
 		"get controller()": {
-			"Syntax": "**.get controller**()->controller : cs.curl._CLI_Controller",
+			"Syntax": "**.get controller**()->controller : cs.lopdf._CLI_Controller",
 			"Params": [
 				[
 					"controller",
-					"cs.curl._CLI_Controller",
+					"cs.lopdf._CLI_Controller",
 					"<-"
 				]
 			],
@@ -373,7 +299,7 @@
 	},
 	"_CLI_Controller": {
 		"execute()": {
-			"Syntax": "**.execute**( *command* : Variant; *message* : Variant; *context* : Variant ) : cs.curl._CLI_Controller",
+			"Syntax": "**.execute**( *command* : Variant; *message* : Variant; *context* : Variant ) : cs.lopdf._CLI_Controller",
 			"Params": [
 				[
 					"command",
@@ -392,18 +318,18 @@
 				],
 				[
 					"",
-					"cs.curl._CLI_Controller",
+					"cs.lopdf._CLI_Controller",
 					"<-"
 				]
 			],
 			"Summary": ""
 		},
 		"get instance()": {
-			"Syntax": "**.get instance**()->instance : cs.curl._CLI",
+			"Syntax": "**.get instance**()->instance : cs.lopdf._CLI",
 			"Params": [
 				[
 					"instance",
-					"cs.curl._CLI",
+					"cs.lopdf._CLI",
 					"<-"
 				]
 			],
@@ -474,5 +400,79 @@
 		"hideWindow": {
 			"Syntax": "hideWindow : Boolean"
 		}
+	},
+	"distill": {
+		"version()": {
+			"Syntax": "**.version**() : Text",
+			"Params": [
+				[
+					"",
+					"Text",
+					"<-"
+				]
+			],
+			"Summary": ""
+		},
+		"get controller()": {
+			"Syntax": "**.get controller**() : cs.lopdf._distill_Controller",
+			"Params": [
+				[
+					"",
+					"cs.lopdf._distill_Controller",
+					"<-"
+				]
+			],
+			"Summary": ""
+		},
+		"terminate()": {
+			"Syntax": "**.terminate**()",
+			"Params": [],
+			"Summary": ""
+		},
+		"execute()": {
+			"Syntax": "**.execute**( *option* : Variant; *events* : Object ) : Collection",
+			"Params": [
+				[
+					"option",
+					"Variant",
+					"->"
+				],
+				[
+					"events",
+					"Object",
+					"->"
+				],
+				[
+					"",
+					"Collection",
+					"<-"
+				]
+			],
+			"Summary": ""
+		},
+		"get worker()": {
+			"Syntax": "**.get worker**() : 4D.SystemWorker",
+			"Params": [
+				[
+					"",
+					"4D.SystemWorker",
+					"<-"
+				]
+			],
+			"Summary": ""
+		},
+		"onError": {
+			"Syntax": "onError : 4D.Function"
+		},
+		"onTerminate": {
+			"Syntax": "onTerminate : 4D.Function"
+		},
+		"onResponse": {
+			"Syntax": "onResponse : 4D.Function"
+		},
+		"onData": {
+			"Syntax": "onData : 4D.Function"
+		},
+		"_inheritedFrom_": "_CLI"
 	}
 }
