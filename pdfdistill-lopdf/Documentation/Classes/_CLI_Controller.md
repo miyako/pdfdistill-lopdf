@@ -1,64 +1,59 @@
 # _CLI_Controller
 ### Manages a queue of `4D.SystemWorker` commands for a `_CLI` instance.
 
-> _CLI_Controller.new (CLI : cs.curl._CLI)
+> cs.lopdf._CLI_Controller.new ( CLI : cs.lopdf._CLI ) : cs.lopdf._CLI_Controller
 
 | Parameter | Type | | Description |
 | --- | --- | --- | --- |
-| CLI | cs.curl._CLI | -> | The owning `_CLI` instance |
+| CLI | cs.lopdf._CLI | -> | The owning `_CLI` instance |
+| Result | cs.lopdf._CLI_Controller | <- | New controller |
 
 ## Description
 
-`_CLI_Controller` serializes an ordered queue of shell commands, executing each one in its own `4D.SystemWorker` and advancing to the next only after the previous worker has terminated. It is attached to a `_CLI` instance and is not used directly by application code.
+Internal class. `_CLI_Controller` runs an ordered queue of command lines, each in its own `4D.SystemWorker`, starting the next one only after the previous worker has responded. The controller object itself is passed as the SystemWorker options object, so its properties (`dataType`, `encoding`, `variables`, `timeout`, `hideWindow`, `currentDirectory`) and event handlers configure each worker. It is extended by [`_distill_Controller`](_distill_Controller.md) and not used directly by application code.
 
 ### Properties
 
-| Property | Type | Description |
-| --- | --- | --- |
-| dataType | Text | Worker data type (`"text"` by default) |
-| encoding | Text | Text encoding (`"UTF-8"` by default) |
-| variables | Object | Environment variables injected into each worker |
-| timeout | Variant | Worker timeout (`Null` = no timeout) |
-| hideWindow | Boolean | Hide the console window on Windows (default: `True`) |
-| currentDirectory | 4D.Folder | Inherited from the owning `_CLI` |
-| SYSTEM_WORKER_CONTEXT | Object | Key-value store keyed by worker PID for per-command context |
-| complete | Boolean | `True` when the command queue has been fully drained |
-| worker | 4D.SystemWorker | The currently running worker (`Null` when idle) |
-| commands | Collection | Pending command strings |
-| instance | cs.curl._CLI | The owning `_CLI` instance |
+| Property | Type | | Description |
+| --- | --- | --- | --- |
+| dataType | Text | | Worker data type (default `"text"`) |
+| encoding | Text | | Text encoding (default `"UTF-8"`) |
+| variables | Object | | Environment variables for each worker (default `{}`) |
+| timeout | Variant | | Worker timeout in seconds (default `Null` = no timeout) |
+| hideWindow | Boolean | | Hide the console window on Windows (default `True`) |
+| currentDirectory | 4D.Folder | | Working directory of each worker (default: the owning `_CLI`'s `currentDirectory`) |
+| SYSTEM_WORKER_CONTEXT | Object | | Per-command context values, keyed by worker PID |
+| complete | Boolean | read-only | `True` once the queue has been drained |
+| worker | 4D.SystemWorker | read-only | The running worker (`Null` when idle) |
+| commands | Collection | read-only | Pending command lines |
+| instance | cs.lopdf._CLI | read-only | The owning `_CLI` instance |
 
-### Event callbacks
+### Event handlers
 
-The following properties may be set to `4D.Function` values before calling `execute`. If not set in a subclass they default to the built-in `_onEvent` no-op handler.
+The properties `onData`, `onDataError`, `onError`, `onResponse` and `onTerminate` are the SystemWorker callbacks. Any that is not defined as a function in a subclass defaults to a no-op handler. While a queue is running, `onResponse` and `onTerminate` are temporarily wrapped so that the next command starts after each response; the original handlers are still called with `This` = the controller, `$1` = the worker and `$2` = the event object (for `onResponse`, `$2.context` is the context value of that command). They are restored when the queue is drained or terminated.
 
-| Property | Signature | Description |
-| --- | --- | --- |
-| onData | ($worker; $params) | Fired when the worker emits stdout data |
-| onDataError | ($worker; $params) | Fired when the worker emits stderr data |
-| onError | ($worker; $params) | Fired on worker error |
-| onResponse | ($worker; $params) | Fired when the worker responds (command finished) |
-| onTerminate | ($worker; $params) | Fired when the worker terminates |
+## .execute()
 
-### Methods
-
-#### execute (command, message, context) → cs.curl._CLI_Controller
-
-Enqueues one or more commands and starts execution if no worker is currently running.
+> .execute ( command : Text | Collection { ; message : Variant { ; context : Variant } } ) : cs.lopdf._CLI_Controller
 
 | Parameter | Type | | Description |
 | --- | --- | --- | --- |
-| command | Text \| Collection | -> | Shell command string, or a collection of command strings |
-| message | Variant \| Collection | -> | Optional stdin payload(s) sent to the worker |
-| context | Variant \| Collection | -> | Optional per-command context object(s); retrievable via `SYSTEM_WORKER_CONTEXT` in callbacks |
-| Result | cs.curl._CLI_Controller | <- | `This` — enables chaining |
+| command | Text \| Collection | -> | Command line, or a collection of command lines |
+| message | Variant | -> | stdin payload, or a collection of payloads (one per command) |
+| context | Variant | -> | Context value, or a collection of values (one per command), returned as `$2.context` in `onResponse` |
+| Result | cs.lopdf._CLI_Controller | <- | `This`, for chaining |
 
-When `message` is an Object or Collection it is serialized to JSON before being posted. Blob and Text values are posted as-is. Scalar values are converted with `String()`. A `Null` message posts nothing.
+Appends the command(s) to the queue and starts the first one if no worker is running.
 
-#### terminate ()
+The stdin payload is written and the input closed right after the worker starts: Objects and Collections are sent as JSON, `4D.Blob`/Blob and Text as-is, numbers, Booleans, dates and times through `String()`. `Null` sends nothing and leaves stdin open.
 
-Aborts the queue, clears all pending commands, terminates the active worker, and resets internal state.
+## .terminate()
+
+> .terminate()
+
+Clears the queue, terminates the running worker and restores the original event handlers.
 
 ## See also
 
 - [`_CLI`](_CLI.md) — owns and instantiates the controller
-- [`_curl_Controller`](_curl_Controller.md) — extends `_CLI_Controller` with stdout/stderr accumulation and curl-specific progress parsing
+- [`_distill_Controller`](_distill_Controller.md) — subclass used by `distill`

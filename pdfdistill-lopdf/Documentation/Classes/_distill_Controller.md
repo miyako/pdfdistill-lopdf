@@ -1,70 +1,66 @@
 # _distill_Controller
-### Extends `_CLI_Controller` with stdout/stderr accumulation.
+### Extends `_CLI_Controller` with stdout/stderr accumulation and event forwarding.
 
-> _distill_Controller.new (CLI : cs.lopdf._CLI)
+> cs.lopdf._distill_Controller.new ( CLI : cs.lopdf._CLI ) : cs.lopdf._distill_Controller
 
 | Parameter | Type | | Description |
 | --- | --- | --- | --- |
-| CLI | cs.lopdf._CLI | -> | The owning `_CLI` instance |
+| CLI | cs.lopdf._CLI | -> | The owning [`distill`](distill.md) instance |
+| Result | cs.lopdf._distill_Controller | <- | New controller |
 
 ## Description
 
-`_distill_Controller` is the default controller used by [`distill`](distill.md). It inherits all command-queue and worker-management behaviour from [`_CLI_Controller`](_CLI_Controller.md) and overrides the data and response event handlers to:
+Internal class. `_distill_Controller` is the default controller used by [`distill`](distill.md). It inherits the command queue and worker management of [`_CLI_Controller`](_CLI_Controller.md) and overrides the event handlers to:
 
-- Accumulate stdout into `stdOut` for synchronous callers.
-- Forward `onResponse`, `onError`, and `onTerminate` events to the corresponding callbacks on the owning `distill` instance.
+- accumulate stdout into `stdOut` and stderr into `stdErr`;
+- forward `onResponse`, `onError` and `onTerminate` events to the corresponding callbacks of the owning `distill` instance.
+
+To customise event handling, extend this class and pass the subclass to `cs.lopdf.distill.new()`.
 
 ### Properties
 
-In addition to properties inherited from `_CLI_Controller`:
+In addition to the properties inherited from `_CLI_Controller`:
 
 | Property | Type | Description |
 | --- | --- | --- |
-| stdOut | Text | Accumulated stdout text from the last command |
-| stdErr | Text | Accumulated stderr text (consumed incrementally during progress parsing) |
+| stdOut | Text | Accumulated stdout of the current command (decoded as UTF-8 text; `dataType` is `"text"`) |
+| stdErr | Text | Accumulated stderr of the current command (summary line, verbose statistics, errors) |
 
-### Methods
+## .clear()
 
-#### clear () → cs.lopdf._distill_Controller
+> .clear() : cs.lopdf._distill_Controller
 
-Resets `stdOut` and `stdErr` to empty strings. Called automatically by the constructor and by `distill.execute` between successive synchronous commands.
+| Parameter | Type | | Description |
+| --- | --- | --- | --- |
+| Result | cs.lopdf._distill_Controller | <- | `This`, for chaining |
 
-| Result | Type | Description |
-| --- | --- | --- |
-| Result | cs.lopdf._distill_Controller | `This` — enables chaining |
+Resets `stdOut` and `stdErr` to empty strings. Called by the constructor and by `distill.execute()` after each synchronous task.
 
-### Overridden event callbacks
+## Event handlers
 
-#### onData ($worker : 4D.SystemWorker; $params : Object)
+#### onData ( $worker : 4D.SystemWorker ; $params : Object )
 
 Appends `$params.data` to `stdOut`.
 
-#### onDataError ($worker : 4D.SystemWorker; $params : Object)
+#### onDataError ( $worker : 4D.SystemWorker ; $params : Object )
 
-Handles distill-lopdf's stderr stream. When `distill.onData` is set, appends incoming data to `stdErr`. For each match found, calls `distill.onData` with a context object:
+Appends `$params.data` to `stdErr`.
 
-| Property | Type | Description |
-| --- | --- | --- |
-| percentage | Real | Parsed progress percentage (0–100) |
-| context | Object | Per-command context from `SYSTEM_WORKER_CONTEXT` keyed by worker PID |
+#### onResponse ( $worker : 4D.SystemWorker ; $params : Object )
 
-Consumed characters are trimmed from `stdErr` after each scan pass, so partial lines are held until a complete match arrives.
+Calls `distill.onResponse` (if it is a `4D.Function`) with `This` = `$worker` and `$1` = `$params`.
 
-When `distill.onData` is not set, stderr is silently discarded.
+In asynchronous mode, `distill.execute()` replaces this handler with `events.onResponse`, which is then called with `$1` = `$worker` and `$2` = `$params` (see [`distill`](distill.md#callbacks)).
 
-#### onResponse ($worker : 4D.SystemWorker; $params : Object)
+#### onError ( $worker : 4D.SystemWorker ; $params : Object )
 
-Forwards to `distill.onResponse` if set.
+Calls `distill.onError` (if set) with `This` = `$worker` and `$1` = `$params`.
 
-#### onError ($worker : 4D.SystemWorker; $params : Object)
+#### onTerminate ( $worker : 4D.SystemWorker ; $params : Object )
 
-Forwards to `distill.onError` if set.
-
-#### onTerminate ($worker : 4D.SystemWorker; $params : Object)
-
-Forwards to `distill.onTerminate` if set.
+Calls `distill.onTerminate` (if set) with `This` = `$worker` and `$1` = `$params`.
 
 ## See also
 
 - [`_CLI_Controller`](_CLI_Controller.md) — parent class
-- [`distill`](distill.md) — sets `onData`, `onResponse`, `onError`, `onTerminate` which this controller forwards to
+- [`distill`](distill.md) — owner whose callbacks this controller forwards to
