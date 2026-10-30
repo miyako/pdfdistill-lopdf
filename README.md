@@ -134,10 +134,28 @@ libraries are needed beyond the platform linker.
 
 ### CI / releases
 
-`.github/workflows/release.yml` checks dependency licenses with `cargo-deny`, runs the tests,
-builds a universal macOS binary (via `lipo`) and Windows x64/arm64 binaries (static CRT,
-verified with `dumpbin /DEPENDENTS`), and uploads them as artifacts. Pushing a `v*` tag creates
-a GitHub release with the zipped binaries.
+`.github/workflows/build.yml` (Build) checks dependency licenses with `cargo-deny`, runs the
+tests, builds a universal macOS binary (via `lipo`) and Windows x64/arm64 binaries (static CRT,
+verified with `dumpbin /DEPENDENTS`), and uploads them as artifacts. Pull requests only build
+and test.
+
+On push to `main` (changes outside `pdfdistill-lopdf/`) or a manual run on `main`, Build also:
+
+1. code signs the macOS binary (Developer ID, hardened runtime) and notarizes it with
+   `notarytool` (a bare Mach-O can't be stapled, so the ticket is fetched online by Gatekeeper);
+2. copies the binaries into the 4D component —
+   `pdfdistill-lopdf/Resources/bin/macOS/pdfdistill-lopdf`,
+   `pdfdistill-lopdf/Resources/bin/Windows/pdfdistill-lopdf.exe`,
+   `pdfdistill-lopdf/Resources/bin/WindowsARM/pdfdistill-lopdf.exe` — and commits them to `main`
+   as `github-actions[bot]` if they changed;
+3. dispatches the Publish workflow (`publish.yml`, patch bump), which builds, signs and
+   releases the 4D component from that commit.
+
+Signing uses the same repository secrets as Publish (`APPLE_DEVELOPER_ID_CERTIFICATE`,
+`APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD`, `KEYCHAIN_PASSWORD`, `CODESIGN_APPLE_ID`,
+`NOTARYTOOL_APPLE_ID`, `NOTARYTOOL_TEAM_ID`, `NOTARYTOOL_PASSWORD`).
+
+Pushing a `v*` tag creates a GitHub release with the zipped CLI binaries.
 
 ## Dependencies and licenses
 
