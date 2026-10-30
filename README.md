@@ -64,17 +64,20 @@ $distill.execute([\
   [$in; "-o"; $out; "--lossless"]; \
   [Folder(fk desktop folder).file("other.pdf"); "--no-images"]])  // -> other.distilled.pdf
 
-// Blob in (via stdin), file out
+// Blob in (via stdin), Blob out (via stdout)
 var $pdf : 4D.Blob
 $pdf:=$in.getContent()
-$distill.execute(["-"; "-o"; $out; {file: $pdf}])
+var $result : Object
+$result:=$distill.execute(["-"; "--quality"; 60; {file: $pdf}])[0]
+// $result.response: 4D.Blob (the PDF), $result.responseError: Text, $result.exitCode: Integer
 ```
 
 Task elements are mapped to the command line by type: `4D.File` → its path, Text → an argument
 (flags such as `"--lossless"`), Number → its value, and an object `{data: …; file: …}` supplies
 a callback context (`data`) and/or the stdin payload (`file`, used when the input is `"-"`).
-Output must go to a file (`-o` + `4D.File`): stdout is captured as text, so PDF bytes written
-to stdout cannot be retrieved as a Blob.
+Synchronous calls return one object per task: `{response: 4D.Blob; responseError: Text;
+exitCode: Integer}` (stdout, stderr, and `0` success / `1` runtime error / `2` usage error).
+For Blob in / Blob out, use `["-"; …options; {file: $blob}]`; the PDF is returned in `response`.
 
 To run asynchronously, pass an `onResponse` callback; it receives the `4D.SystemWorker`
 (`exitCode`, and the CLI's summary line in `responseError`) and the event object, whose

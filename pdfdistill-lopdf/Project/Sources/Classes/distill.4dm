@@ -40,11 +40,18 @@ Function version() : Text
 	$command:=This:C1470.escape(This:C1470.executablePath)
 	$command+=" --version"
 	
+	This:C1470.onResponse:=Null:C1517
+	This:C1470.onData:=Null:C1517
+	This:C1470.onDataError:=Null:C1517
+	This:C1470.onError:=Null:C1517
+	This:C1470.onTerminate:=Null:C1517
+	
+	This:C1470.controller.clear()
 	This:C1470.controller.execute($command)
 	This:C1470.worker.wait()
 	
 	var $stdOut : Text
-	$stdOut:=This:C1470.controller.stdOut
+	$stdOut:=Convert to text:C1012(This:C1470.controller.stdOut; "UTF-8")
 	
 	var $lines : Collection
 	$lines:=Split string:C1554($stdOut; This:C1470.EOL; ck ignore null or empty:K85:5)
@@ -86,11 +93,16 @@ Function execute($option : Variant; $events : Object) : Collection
 	var $commands : Collection
 	$commands:=[]
 	
+	This:C1470.onResponse:=Null:C1517
+	This:C1470.onData:=Null:C1517
+	This:C1470.onDataError:=Null:C1517
+	This:C1470.onError:=Null:C1517
+	This:C1470.onTerminate:=Null:C1517
+	
 	If ($events#Null:C1517)
 		If (OB Instance of:C1731($events.onResponse; 4D:C1709.Function))
 			$isAsync:=True:C214
 			This:C1470.onResponse:=$events.onResponse
-			This:C1470.controller.onResponse:=$events.onResponse
 			If ($events.onData#Null:C1517)\
 				 && (Value type:C1509($events.onData)=Is object:K8:27)\
 				 && (OB Instance of:C1731($events.onData; 4D:C1709.Function))
@@ -100,6 +112,11 @@ Function execute($option : Variant; $events : Object) : Collection
 				 && (Value type:C1509($events.onError)=Is object:K8:27)\
 				 && (OB Instance of:C1731($events.onError; 4D:C1709.Function))
 				This:C1470.onError:=$events.onError
+			End if 
+			If ($events.onDataError#Null:C1517)\
+				 && (Value type:C1509($events.onDataError)=Is object:K8:27)\
+				 && (OB Instance of:C1731($events.onDataError; 4D:C1709.Function))
+				This:C1470.onDataError:=$events.onDataError
 			End if 
 			If ($events.onTerminate#Null:C1517)\
 				 && (Value type:C1509($events.onTerminate)=Is object:K8:27)\
@@ -118,6 +135,7 @@ Function execute($option : Variant; $events : Object) : Collection
 		$command:=This:C1470.escape(This:C1470.executablePath)
 		
 		$stdOut:=True:C214
+		$isStream:=False:C215
 		
 		var $data; $file : Variant
 		$data:=Null:C1517
@@ -167,6 +185,10 @@ Function execute($option : Variant; $events : Object) : Collection
 			End case 
 		End for each 
 		
+		If (Not:C34($isAsync))
+			This:C1470.controller.clear()
+		End if 
+		
 		var $worker : 4D:C1709.SystemWorker
 		$worker:=This:C1470.controller.execute($command; $isStream ? $file : Null:C1517; $data).worker
 		
@@ -179,7 +201,7 @@ Function execute($option : Variant; $events : Object) : Collection
 			$responseError:=This:C1470.controller.stdErr
 			var $response : 4D:C1709.Blob
 			$response:=This:C1470.controller.stdOut
-			$results.push({response: $response; responseError: $responseError})
+			$results.push({response: $response; responseError: $responseError; exitCode: $worker.exitCode})
 		End if 
 		
 	End for each 
