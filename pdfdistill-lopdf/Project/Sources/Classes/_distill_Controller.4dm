@@ -7,6 +7,15 @@ Class constructor($CLI : cs:C1710._CLI)
 	
 	Super:C1705($CLI)
 	
+	This:C1470.clear()
+	
+Function clear() : cs:C1710._distill_Controller
+	
+	This:C1470.stdOut:=4D:C1709.Blob.new()
+	This:C1470.stdErr:=""
+	
+	return This:C1470
+	
 Function onData($worker : 4D:C1709.SystemWorker; $params : Object)
 	
 	var $instance : cs:C1710.distill
@@ -31,7 +40,7 @@ Function onResponse($worker : 4D:C1709.SystemWorker; $params : Object)
 	$instance:=This:C1470.instance
 	
 	If (OB Instance of:C1731($instance.onResponse; 4D:C1709.Function))
-		$instance.onResponse.call($worker; $params)
+		$instance.onResponse.call(This:C1470; $worker; $params)
 	Else 
 		This:C1470.stdOut:=$worker.response
 		This:C1470.stdErr:=$worker.responseError
