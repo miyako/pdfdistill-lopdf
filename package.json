@@ -6,7 +6,7 @@
   ],
   "license": "MIT",
   "repository": "https://github.com/miyako/pdfdistill-lopdf",
-  "version": "20.0.6",
+  "version": "20.0.7",
   "tool": {
     "platform": "macos",
     "branch": "20.x",
