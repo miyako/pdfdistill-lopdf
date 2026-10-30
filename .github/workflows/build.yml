@@ -4,11 +4,15 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+    # The 4D component (incl. the binaries committed back by the `ship` job) is
+    # handled by publish.yml; don't rebuild the CLI for those changes.
+    paths-ignore:
+      - "pdfdistill-lopdf/**"
   pull_request:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -25,8 +29,13 @@ jobs:
 
   macos:
     runs-on: macos-14
+    outputs:
+      signed: ${{ steps.notarize.outputs.signed }}
     env:
       MACOSX_DEPLOYMENT_TARGET: "11.0"
+      # Signing/notarization only outside pull requests and only when secrets exist
+      # (they are absent for forks).
+      SIGN: ${{ github.event_name != 'pull_request' && secrets.APPLE_DEVELOPER_ID_CERTIFICATE != '' && secrets.CODESIGN_APPLE_ID != '' && secrets.NOTARYTOOL_PASSWORD != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -42,15 +51,83 @@ jobs:
       - name: Universal binary (lipo)
         run: |
           mkdir -p dist
-          lipo -create -output dist/$BIN \
-            target/aarch64-apple-darwin/release/$BIN \
-            target/x86_64-apple-darwin/release/$BIN
-          lipo -info dist/$BIN
-          otool -L dist/$BIN
-          dist/$BIN --version
-          dist/$BIN tests/fixtures/ms-print-to-pdf-1.pdf -o /tmp/out.pdf -v
+          lipo -create -output "dist/$BIN" \
+            "target/aarch64-apple-darwin/release/$BIN" \
+            "target/x86_64-apple-darwin/release/$BIN"
+          chmod 755 "dist/$BIN"
+          lipo -info "dist/$BIN"
+          otool -L "dist/$BIN"
+          "dist/$BIN" --version
+          "dist/$BIN" tests/fixtures/ms-print-to-pdf-1.pdf -o /tmp/out.pdf -v
+
+      - name: Setup keychain
+        id: keychain
+        if: env.SIGN == 'true'
+        uses: miyako/4D/.github/actions/deployment-setup-keychain@v1
+        with:
+          APPLE_DEVELOPER_ID_CERTIFICATE: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE }}
+          APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+
+      - name: Codesign
+        if: env.SIGN == 'true'
+        env:
+          CODESIGN_APPLE_ID: ${{ secrets.CODESIGN_APPLE_ID }}
+          KEYCHAIN_PATH: ${{ steps.keychain.outputs.KEYCHAIN_PATH }}
+        run: |
+          codesign --force --options runtime --timestamp \
+            --keychain "$KEYCHAIN_PATH" \
+            --sign "$CODESIGN_APPLE_ID" "dist/$BIN"
+          codesign --verify --strict --verbose=2 "dist/$BIN"
+          codesign -dv --verbose=4 "dist/$BIN"
+
+      - name: Notarize
+        id: notarize
+        if: env.SIGN == 'true'
+        env:
+          NOTARYTOOL_APPLE_ID: ${{ secrets.NOTARYTOOL_APPLE_ID }}
+          NOTARYTOOL_TEAM_ID: ${{ secrets.NOTARYTOOL_TEAM_ID }}
+          NOTARYTOOL_PASSWORD: ${{ secrets.NOTARYTOOL_PASSWORD }}
+        run: |
+          # A bare Mach-O can't be stapled; notarize it inside a zip so Gatekeeper
+          # can find the ticket online.
+          ditto -c -k --keepParent "dist/$BIN" "$RUNNER_TEMP/notarize.zip"
+          auth=(--apple-id "$NOTARYTOOL_APPLE_ID" --team-id "$NOTARYTOOL_TEAM_ID" --password "$NOTARYTOOL_PASSWORD")
+          xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" "${auth[@]}" \
+            --wait --output-format json | tee "$RUNNER_TEMP/notarize.json"
+          id=$(jq -r '.id' "$RUNNER_TEMP/notarize.json")
+          status=$(jq -r '.status' "$RUNNER_TEMP/notarize.json")
+          if [ "$status" != "Accepted" ]; then
+            echo "::error::Notarization status: $status"
+            xcrun notarytool log "$id" "${auth[@]}" || true
+            exit 1
+          fi
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Verify signature
+        if: env.SIGN == 'true'
+        run: |
+          codesign --verify --strict --verbose=2 "dist/$BIN"
+          info=$(codesign -dv --verbose=2 "dist/$BIN" 2>&1)
+          echo "$info"
+          grep -q 'flags=0x10000(runtime)' <<<"$info" || { echo "::error::hardened runtime flag missing"; exit 1; }
+          # spctl assessment of a bare (unstapled) CLI tool is informational only
+          spctl --assess --type install --verbose=4 "dist/$BIN" || true
+          "dist/$BIN" --version
+
+      - name: Cleanup keychain
+        if: always() && steps.keychain.outputs.KEYCHAIN_PATH != ''
+        env:
+          KEYCHAIN_PATH: ${{ steps.keychain.outputs.KEYCHAIN_PATH }}
+          CERTIFICATE_PATH: ${{ steps.keychain.outputs.CERTIFICATE_PATH }}
+        run: |
+          security delete-keychain "$KEYCHAIN_PATH" || true
+          rm -f "$CERTIFICATE_PATH" "$RUNNER_TEMP/notarize.zip"
+
+      - name: Package
+        run: |
           cp LICENSE README.md dist/
-          cd dist && zip -9 ../$BIN-macos-universal.zip *
+          cd dist && zip -9 "../$BIN-macos-universal.zip" ./*
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ env.BIN }}-macos-universal
@@ -89,7 +166,6 @@ jobs:
           Compress-Archive -Path dist/* -DestinationPath "$env:BIN-windows-$arch.zip"
           "ASSET=$env:BIN-windows-$arch" | Out-File -FilePath $env:GITHUB_ENV -Append
       - name: Check for dynamic CRT imports
-        if: matrix.target == 'x86_64-pc-windows-msvc'
         shell: pwsh
         run: |
           $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
@@ -102,10 +178,85 @@ jobs:
           name: ${{ env.ASSET }}
           path: ${{ env.ASSET }}.zip
 
+  # Copy the binaries into the 4D component, commit them to main and trigger Publish.
+  # Only on push to main / manual dispatch on main; never for pull requests or tags.
+  ship:
+    if: >-
+      github.repository == 'miyako/pdfdistill-lopdf' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    needs: [licenses, macos, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    concurrency:
+      group: ship-main
+      cancel-in-progress: false
+    env:
+      COMPONENT_BIN: pdfdistill-lopdf/Resources/bin
+    steps:
+      - name: Require signed macOS binary
+        if: needs.macos.outputs.signed != 'true'
+        run: |
+          echo "::error::macOS binary was not signed/notarized (signing secrets missing?); refusing to ship."
+          exit 1
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/artifacts
+          merge-multiple: true
+      - name: Copy binaries into the 4D component
+        env:
+          ART: ${{ runner.temp }}/artifacts
+        run: |
+          set -euo pipefail
+          for a in macos-universal windows-x64 windows-arm64; do
+            unzip -o -q "$ART/$BIN-$a.zip" -d "$RUNNER_TEMP/$a"
+          done
+          mkdir -p "$COMPONENT_BIN/macOS" "$COMPONENT_BIN/Windows" "$COMPONENT_BIN/WindowsARM"
+          install -m 755 "$RUNNER_TEMP/macos-universal/$BIN"     "$COMPONENT_BIN/macOS/$BIN"
+          install -m 644 "$RUNNER_TEMP/windows-x64/$BIN.exe"     "$COMPONENT_BIN/Windows/$BIN.exe"
+          install -m 644 "$RUNNER_TEMP/windows-arm64/$BIN.exe"   "$COMPONENT_BIN/WindowsARM/$BIN.exe"
+          git add "$COMPONENT_BIN"
+          git update-index --chmod=+x "$COMPONENT_BIN/macOS/$BIN"
+          git status --short
+          git ls-files -s "$COMPONENT_BIN"
+      - name: Commit and push
+        id: commit
+        run: |
+          set -euo pipefail
+          if git diff --cached --quiet; then
+            echo "Binaries unchanged; nothing to commit."
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Update CLI binaries in 4D component (${GITHUB_SHA::7}) [skip ci]"
+          for _ in 1 2 3; do
+            if git push origin HEAD:main; then
+              echo "pushed=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            git pull --rebase origin main
+          done
+          echo "::error::Failed to push binaries to main"
+          exit 1
+      - name: Trigger Publish
+        if: steps.commit.outputs.pushed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run publish.yml --repo "$GITHUB_REPOSITORY" --ref main -f use_self_hosted=false -f mode=patch
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [licenses, macos, windows]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/download-artifact@v4
         with:
