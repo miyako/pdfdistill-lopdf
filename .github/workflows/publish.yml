@@ -9,6 +9,7 @@ on:
       - '*/Project/Sources/*/*.4DForm'
       - '*/Project/Sources/*.4DCatalog'
       - '*/Project/Resources/**'
+      - '*/Resources/**'
   workflow_dispatch:
     inputs:
         use_self_hosted:

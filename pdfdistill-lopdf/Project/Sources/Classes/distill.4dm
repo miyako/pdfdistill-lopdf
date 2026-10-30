@@ -74,7 +74,11 @@ Function execute($option : Variant; $events : Object) : Collection
 		: (Value type:C1509($option)=Is object:K8:27)
 			$options:=[$option]
 		: (Value type:C1509($option)=Is collection:K8:32)
-			$options:=$option
+			If ($option.length#0) && (Value type:C1509($option[0])#Is collection:K8:32)
+				$options:=[$option]  //a single argument collection
+			Else 
+				$options:=$option
+			End if 
 		Else 
 			$options:=[]
 	End case 
@@ -124,7 +128,7 @@ Function execute($option : Variant; $events : Object) : Collection
 			Case of 
 				: (Value type:C1509($value)=Is text:K8:3)
 					Case of 
-						: ($value="-o")
+						: ($value="-o") || ($value="--output")
 							$stdOut:=False:C215
 							$command+=" "+$value
 							continue
