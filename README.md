@@ -1,14 +1,114 @@
 # pdfdistill-lopdf
 
-A small, self-contained CLI that shrinks bloated PDFs — in particular the ones produced by
-**Microsoft Print to PDF**, which embeds complete TrueType fonts and stores every image as
-lossless Flate. Written in Rust on top of [lopdf](https://github.com/J-F-Liu/lopdf), with only
-permissively licensed dependencies.
+Shrinks bloated PDFs — in particular the ones produced by **Microsoft Print to PDF**, which
+embeds complete TrueType fonts and stores every image as lossless Flate — by deduplicating
+objects, subsetting fonts, recompressing/downsampling images and rewriting the file structure.
+
+This repository contains:
+
+* a **[4D component](#4d-component)** (`pdfdistill-lopdf/`) that lets 4D applications distill
+  PDFs through the class `cs.lopdf.distill`;
+* the **[command-line tool](#command-line-tool)** it wraps: a small, self-contained Rust program
+  built on [lopdf](https://github.com/J-F-Liu/lopdf), with only permissively licensed
+  dependencies.
+
+## 4D component
+
+The component bundles the `pdfdistill-lopdf` executable — a signed and notarized universal
+binary for macOS, and static builds for Windows x64 and ARM64 — in
+`Resources/bin/{macOS,Windows,WindowsARM}` (see [CI / releases](#ci--releases)) and runs it with
+`4D.SystemWorker`. If the executable for the current platform is missing, `pdfdistill-lopdf`
+is looked up on the `PATH`. No plug-in is involved. It targets 4D 20 and later.
+
+### Installation
+
+**Project Dependencies (4D 20 R6 and later):** add the component from the *Project
+Dependencies* panel (GitHub repository `miyako/pdfdistill-lopdf`), or declare it in your
+project's `Project/Sources/dependencies.json`:
+
+```json
+{
+  "dependencies": {
+    "pdfdistill-lopdf": {
+      "github": "miyako/pdfdistill-lopdf",
+      "version": "^20.0.0"
+    }
+  }
+}
+```
+
+**Manual:** download `pdfdistill-lopdf.zip` from the
+[latest release](https://github.com/miyako/pdfdistill-lopdf/releases/latest) and place the
+compiled component in your project's `Components` folder.
+
+The component's classes are exposed in the `cs.lopdf` class store.
+
+### Quick start
+
+```4d
+var $distill : cs.lopdf.distill
+$distill:=cs.lopdf.distill.new()
+
+var $version : Text
+$version:=$distill.version()  // e.g. "0.1.0"
+
+var $in; $out : 4D.File
+$in:=Folder(fk desktop folder).file("report.pdf")
+$out:=Folder(fk desktop folder).file("report.distilled.pdf")
+
+// file to file, synchronous; each task is a collection of CLI arguments
+$distill.execute([$in; "-o"; $out; "--quality"; 60; "--max-dpi"; 150])
+
+// several tasks in one call, e.g. lossless only
+$distill.execute([\
+  [$in; "-o"; $out; "--lossless"]; \
+  [Folder(fk desktop folder).file("other.pdf"); "--no-images"]])  // -> other.distilled.pdf
+
+// Blob in (via stdin), file out
+var $pdf : 4D.Blob
+$pdf:=$in.getContent()
+$distill.execute(["-"; "-o"; $out; {file: $pdf}])
+```
+
+Task elements are mapped to the command line by type: `4D.File` → its path, Text → an argument
+(flags such as `"--lossless"`), Number → its value, and an object `{data: …; file: …}` supplies
+a callback context (`data`) and/or the stdin payload (`file`, used when the input is `"-"`).
+Output must go to a file (`-o` + `4D.File`): stdout is captured as text, so PDF bytes written
+to stdout cannot be retrieved as a Blob.
+
+To run asynchronously, pass an `onResponse` callback; it receives the `4D.SystemWorker`
+(`exitCode`, and the CLI's summary line in `responseError`) and the event object, whose
+`context` is the task's `data`. The calling process must stay alive until the callback fires:
+
+```4d
+#DECLARE($params : Object)
+
+If ($params=Null)
+	CALL WORKER(1; Current method name; {})
+Else 
+	var $in; $out : 4D.File
+	$in:=Folder(fk desktop folder).file("report.pdf")
+	$out:=Folder(fk desktop folder).file("report.distilled.pdf")
+	
+	cs.lopdf.distill.new().execute([[$in; "-o"; $out; {data: $out}]]; \
+		{onResponse: Formula(ALERT(String($1.exitCode)+": "+$1.responseError))})
+End if 
+```
+
+### Class documentation
+
+* [`distill`](pdfdistill-lopdf/Documentation/Classes/distill.md) — public API: `version()`,
+  `execute()`, `terminate()`, options, callbacks and examples
+* Internal: [`_CLI`](pdfdistill-lopdf/Documentation/Classes/_CLI.md),
+  [`_CLI_Controller`](pdfdistill-lopdf/Documentation/Classes/_CLI_Controller.md),
+  [`_distill_Controller`](pdfdistill-lopdf/Documentation/Classes/_distill_Controller.md)
+
+## Command-line tool
 
 This is one of three sibling implementations (Rust/lopdf, C++/qpdf, Go/pdfcpu) sharing the same
 CLI so that they can be benchmarked against each other.
 
-## Usage
+### Usage
 
 ```
 pdfdistill-lopdf <INPUT|-> [-o <OUTPUT|->] [options]
@@ -45,7 +145,7 @@ pdfdistill-lopdf: 720651 -> 114690 bytes (84.1% smaller) -> tests/fixtures/ms-pr
 
 (The per-step sizes in `-v` mode are measured by serializing the document after each step.)
 
-### Results on the fixture (`tests/fixtures/ms-print-to-pdf-1.pdf`, 720,651 bytes)
+#### Results on the fixture (`tests/fixtures/ms-print-to-pdf-1.pdf`, 720,651 bytes)
 
 | options | output bytes | reduction |
 |---|---:|---:|
@@ -61,7 +161,7 @@ Rendered with Ghostscript and macOS Quartz (`sips`), the default output is visua
 to the input apart from JPEG artifacts (mean absolute pixel difference ≈0.3/255); with
 `--lossless` the renders are bit-identical.
 
-## What it does
+### What it does
 
 Passes run in this order:
 
@@ -97,7 +197,7 @@ Passes run in this order:
    a cross-reference stream (PDF 1.5+). The `/Info` dictionary is preserved. The output is
    re-parsed as a sanity check; if that fails the original is returned.
 
-## Building
+### Building
 
 Requires Rust 1.88+.
 
@@ -106,7 +206,7 @@ cargo build --release          # target/release/pdfdistill-lopdf
 cargo test --release           # unit + integration tests (incl. size regression)
 ```
 
-### macOS universal binary (arm64 + x86_64)
+#### macOS universal binary (arm64 + x86_64)
 
 ```sh
 rustup target add aarch64-apple-darwin x86_64-apple-darwin
@@ -119,7 +219,7 @@ lipo -create -output pdfdistill-lopdf \
 otool -L pdfdistill-lopdf      # only /usr/lib/libSystem and /usr/lib/libiconv
 ```
 
-### Windows (static CRT)
+#### Windows (static CRT)
 
 `.cargo/config.toml` sets `-C target-feature=+crt-static` for the MSVC targets, so a plain
 release build has no VC++ redistributable dependency:
@@ -132,7 +232,7 @@ cargo build --release --target aarch64-pc-windows-msvc   # optional
 All dependencies are pure Rust (zlib-rs backend for Flate), so no C toolchain or system
 libraries are needed beyond the platform linker.
 
-### CI / releases
+#### CI / releases
 
 `.github/workflows/build.yml` (Build) checks dependency licenses with `cargo-deny`, runs the
 tests, builds a universal macOS binary (via `lipo`) and Windows x64/arm64 binaries (static CRT,
@@ -157,7 +257,7 @@ Signing uses the same repository secrets as Publish (`APPLE_DEVELOPER_ID_CERTIFI
 
 Pushing a `v*` tag creates a GitHub release with the zipped CLI binaries.
 
-## Dependencies and licenses
+### Dependencies and licenses
 
 Only permissive licenses are allowed (enforced by `deny.toml`). Direct dependencies:
 
@@ -173,7 +273,7 @@ Only permissive licenses are allowed (enforced by `deny.toml`). Direct dependenc
 Transitive dependencies are MIT, Apache-2.0, BSD-2/3-Clause, 0BSD, Zlib, Unlicense (dual with
 MIT) or Unicode-3.0. Run `cargo deny check licenses` to verify.
 
-## Limitations
+### Limitations
 
 * Only `Identity-H/V` CIDFontType2 fonts are subset; simple TrueType/Type1 and CFF fonts are
   left as is (they are still deduplicated and recompressed).
