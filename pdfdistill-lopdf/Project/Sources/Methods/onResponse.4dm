@@ -4,4 +4,8 @@
 var $text : Text
 $text:=$worker.responseError  //information
 ALERT:C41($text)
-$file:=$params.context  //the distilled pdf
+
+var $data : 4D:C1709.Blob
+$data:=$worker.response  ////the distilled pdf
+$file:=$params.context
+$file.setContent($data)

@@ -19,7 +19,7 @@ Class constructor($CLI : cs:C1710._CLI)
 	End for each 
 	
 	This:C1470.timeout:=Null:C1517
-	This:C1470.dataType:="text"
+	This:C1470.dataType:="blob"
 	This:C1470.encoding:="UTF-8"
 	This:C1470.variables:={}
 	This:C1470.currentDirectory:=$CLI.currentDirectory
@@ -183,7 +183,6 @@ Function _onComplete($worker : 4D:C1709.SystemWorker; $params : Object)
 Function _abort()
 	
 	This:C1470._complete:=True:C214
-	This:C1470._commands.clear()
 	
 Function _terminate()
 	

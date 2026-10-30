@@ -15,7 +15,7 @@ Else
 	
 	$events:={}
 	$events.onResponse:=Formula:C1597(ALERT:C41($1.responseError))
-	
+	$events.onResponse:=Formula:C1597(onResponse)
 	$tasks:=[]
 /*
 any element that is an object not a file or folder is considered a context object
@@ -24,10 +24,23 @@ context object can have 2 properties: .data, .file
 .file is used as the stdin (assuming you pass -)
 it can be 4D.File, 4D.Blob, Blob, or Text
 */
+	
+	//file in, file out
 	$tasks.push([$pdf; "-o"; $out; \
 		"--quality"; 50; \
 		"--max-dpi"; 150; \
 		"--lossless"; {data: $out; file: Null:C1517}])
-	$results:=$distill.execute($tasks; $events)
+	
+	//blob in, blob out
+	$tasks.push(["-"; \
+		"--quality"; 50; \
+		"--max-dpi"; 150; \
+		"--lossless"; {data: $out; file: $pdf.getContent()}])
+	
+	If (True:C214)  //async
+		$distill.execute($tasks; $events)
+	Else   //sync
+		$results:=$distill.execute($tasks)
+	End if 
 	
 End if 

@@ -1,5 +1,6 @@
 property onData : 4D:C1709.Function
 property onResponse : 4D:C1709.Function
+property onDataError : 4D:C1709.Function
 property onError : 4D:C1709.Function
 property onTerminate : 4D:C1709.Function
 
@@ -170,12 +171,11 @@ Function execute($option : Variant; $events : Object) : Collection
 		End if 
 		
 		If (Not:C34($isAsync))
-			If ($stdOut)
-				$results.push(This:C1470.controller.stdOut)
-			Else 
-				$results.push(Null:C1517)
-			End if 
-			This:C1470.controller.clear()
+			var $responseError : Text
+			$responseError:=This:C1470.controller.stdErr
+			var $response : 4D:C1709.Blob
+			$response:=This:C1470.controller.stdOut
+			$results.push({response: $response; responseError: $responseError})
 		End if 
 		
 	End for each 
